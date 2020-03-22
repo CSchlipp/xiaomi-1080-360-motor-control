@@ -1,75 +1,210 @@
-#include <stdio.h>
+  #include <stdio.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <string.h>
 
-#define FORWARD 0
-#define REVERSE 1
-#define PAN 0
-#define TILT 1
-#define MAX_LEFT 66
-#define MAX_RIGHT 66
-#define MAX_DOWN 13
-#define MAX_UP 20
 
-int motor_move(int motor, int direction, int steps) {
+#define FORWARD 1 //Up, Left
+#define REVERSE 0 //Down, Right
+#define PAN 0 //H
+#define TILT 1 //V
+#define MAX_H 172
+#define MAX_V 40
+#define CENTER_H 86
+#define CENTER_V 20
+
+int h = 0;
+int v = 0;
+
+int present_h = 0;
+int present_v = 0;
+
+void store_pos(int h, int v) {
+    FILE *fp;
+    char* filename = "pos.txt";
+    fp = fopen(filename, "w");
+    fprintf(fp, "%d,%d", h, v);
+    fclose(fp);
+}
+
+void load_pos() {
+    FILE *fp;
+    char str[7];
+    char* filename = "pos.txt";
+
+    fp = fopen(filename, "r");
+    if (fp == NULL){
+        return;
+    }
+    fgets(str, 7, fp);
+    fclose(fp);
+
+    char* rest = str;
+    //split params
+    h = atoi(strtok_r(rest, ",", &rest));
+    v = atoi(strtok_r(rest, ",", &rest));
+    printf("h %d, v %d", h, v);
+}
+
+void store_present(int present, int h, int v) {
+    FILE *fp;
+    char filename[13];
+    sprintf(filename, "present%d.txt", present);
+    fp = fopen(filename, "w");
+    fprintf(fp, "%d,%d", h, v);
+    fclose(fp);
+}
+
+void load_present(int present) {
+    FILE *fp;
+    char str[7];
+    if (present < 0 || present > 8) {
+        present_h = 0;
+        present_v = 0;
+        return;
+    }
+    char filename[13];
+    sprintf(filename, "present%d.txt", present);
+
+
+    fp = fopen(filename, "r");
+    if (fp == NULL){
+        return;
+    }
+    fgets(str, 7, fp);
+    fclose(fp);
+    char* rest = str;
+    //split params
+    present_h = atoi(strtok_r(rest, ",", &rest));
+    present_v = atoi(strtok_r(rest, ",", &rest));
+    printf("h %d, v %d", present_h, present_v);
+}
+
+void motor_move(int motor, int direction, int steps) {
     motor_init();
     switch (motor) {
         case 0:
             motor_h_dir_set(direction);
-            motor_h_position_get();
             motor_h_dist_set(steps);
             motor_h_move();
-            motor_h_stop();    
+
+            if (direction == FORWARD) {
+                h = h + steps;
+            } else if (direction == REVERSE) {
+                h = h - steps;
+            }
             break;
         case 1:
             motor_v_dir_set(direction);
-            motor_v_position_get();
             motor_v_dist_set(steps);
             motor_v_move();
-            motor_v_stop();
+
+            if (direction == FORWARD) {
+                v = v + steps;
+            } else if (direction == REVERSE) {
+                v = v - steps;
+            }
             break;
     }
     motor_exit();
-    return 0;
 }
 
-int motor_left(int steps) { return motor_move(PAN, FORWARD, steps); }
-int motor_right(int steps) { return motor_move(PAN, REVERSE, steps); }
-int motor_up(int steps) { return motor_move(TILT, FORWARD, steps); }
-int motor_down(int steps) { return motor_move(TILT, REVERSE, steps); }
-
-int main() {
-    int up_p, down_p, left_p, right_p = 0; // motor position
-    motor_up(2);
-    while(1) {
-        int a = service();
-        if (a) {
-            break;
-        }
+void motor_left(int steps) {
+    if (h + steps > MAX_H) {
+        steps = MAX_H-h;
     }
-    return 0;
+    motor_move(PAN, FORWARD, steps);
+    store_pos(h, v);
 }
 
-int service() { // for now it's for testing max position 
-    system ("/bin/stty raw");
-    if (getchar() == '\033') { // if the first value is esc
-    getchar(); // skip the [
-    switch(getchar()) { // the real value
-        case 'A':
-            motor_up(5);
-            break;
-        case 'B':
-            motor_down(5);
-            break;
-        case 'C':
-            motor_right(5);
-            break;
-        case 'D':
-            motor_left(5);
-            break;
-        }
+void motor_right(int steps) {
+    if (h-steps < 0) {
+        steps = h;
     }
-    else {
-        return 0;
+    motor_move(PAN, REVERSE, steps);
+    store_pos(h, v);
+}
+
+void motor_up(int steps) {
+    if (v + steps > MAX_V) {
+        steps = MAX_V-v;
+    }
+    motor_move(TILT, FORWARD, steps);
+    store_pos(h, v);
+}
+
+void motor_down(int steps) {
+    if (v-steps < 0) {
+        steps = v;
+    }
+    motor_move(TILT, REVERSE, steps);
+    store_pos(h, v);
+}
+
+void motor_goto(int present_h, int present_v) {
+    if (present_h > h) {
+        motor_left(present_h-h);
+    } else if ( present_h < h) {
+        motor_right(h-present_h);
+    }
+
+    if (present_v > v) {
+        motor_up(present_v-v);
+    } else if ( present_v < v) {
+        motor_down(v-present_v);
     }
 }
+
+void motor_calibrate() {
+    h = MAX_H;
+    v = MAX_V;
+
+    motor_right(MAX_H);
+    h = 0;
+    motor_left(CENTER_H);
+
+    motor_down(MAX_V);
+    v = 0;
+    motor_up(CENTER_V);
+}
+
+
+int main(int argc, char **argv) {
+
+    if (argc < 3 ) {
+        char filename[10];
+        strcpy(filename, argv[0]);
+        printf("Usage: \n%s <calibrate|left|right|up|down|store|goto> <steps|present[1-8]>\n", filename);
+        exit(1);
+    }
+
+    char command[10];
+    strcpy(command, argv[1]);
+    int steps_present = atoi(argv[2]);
+
+    load_pos();
+
+    if (strcmp(command,"calibrate") == 0) {
+        motor_calibrate();
+    }
+    else if (strcmp(command,"left") == 0) {
+        motor_left(steps_present);
+    }
+    else if (strcmp(command,"right") == 0) {
+        motor_right(steps_present);
+    }
+    else if (strcmp(command,"up") == 0) {
+        motor_up(steps_present);
+    }
+    else if (strcmp(command,"down") == 0) {
+        motor_down(steps_present);
+    }
+    else if (strcmp(command,"store") == 0 && steps_present > 0 && steps_present <=8) {
+        store_present(steps_present, h, v);
+    }
+    else if (strcmp(command,"goto") == 0 && steps_present > 0 && steps_present <=8) {
+        load_present(steps_present);
+        motor_goto(present_h, present_v);
+    }
+}
+

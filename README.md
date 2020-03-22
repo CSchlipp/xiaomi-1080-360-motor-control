@@ -24,11 +24,10 @@ https://github.com/telmomarques/xiaomi-360-1080p-hacks
 If you want to use your own libs, you can get it from the camera using [`pull_libs`](./pull_libs). 
 
 
-5. clonning from master branch (stable)
+5. Clone the repo
 ```git clone
- git clone -b master https://github.com/thewh1teagle/xiaomi-1080-360-motor-control.git
+ git clone https://github.com/CSchlipp/xiaomi-1080-360-motor-control.git
 ```
-
 
 
 6. Kitchen is ready
@@ -37,3 +36,27 @@ If you want to use your own libs, you can get it from the camera using [`pull_li
 make
 ```
 
+## Usage
+### Calibrate
+Calibrate Cam and move to center:  
+```./motor calibrate 0```
+
+### Move
+Move Cam up by 10 steps:  
+```./motor up 10```  
+Move Cam down by 10 steps:  
+```./motor down 10```  
+Move Cam left by 10 steps:  
+```./motor left 10```  
+Move Cam right by 10 steps:  
+```./motor right 10```
+
+### Store Present
+Store the current position into present 1:  
+```./motor store 1```  
+Available presents: {1 ... 8}
+
+### Go to stored position
+Move Cam to stored position 1:  
+```./motor goto 1```  
+Available presents: {1 ... 8}

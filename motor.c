@@ -1,95 +1,108 @@
-  #include <stdio.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <inttypes.h>
 #include <string.h>
 
+#define FORWARD 1       //Direction for Up, Left
+#define REVERSE 0       //Direction for Down, Right
+#define PAN 0           //Horizontal
+#define TILT 1          //Vertical
+#define MAX_H 172       //Max steps horizontal
+#define MAX_V 40        //Max steps vertical
+#define CENTER_H 86     //Center pos horizontal
+#define CENTER_V 20     //Center pos vertical
+#define POS_LEN 7       //Format: xxx,yyy
+#define MAXPATHLEN 200  //Max Len for full path
 
-#define FORWARD 1 //Up, Left
-#define REVERSE 0 //Down, Right
-#define PAN 0 //H
-#define TILT 1 //V
-#define MAX_H 172
-#define MAX_V 40
-#define CENTER_H 86
-#define CENTER_V 20
-
-#define MAXPATHLEN 200
-
+//Full path of executable
 char fullpath[MAXPATHLEN];
 
+//Current pos
 int h = 0;
 int v = 0;
 
+//Present target pos
 int present_h = 0;
 int present_v = 0;
 
+//Store current pos to file
 void store_pos(int h, int v) {
     FILE *fp;
     char filename[MAXPATHLEN];
+
+    //construct full pathname
     sprintf(filename, "%s/pos.txt", fullpath);
     fp = fopen(filename, "w");
     fprintf(fp, "%d,%d", h, v);
     fclose(fp);
 }
 
+//Load current pos from file
 void load_pos() {
     FILE *fp;
-    char str[7];
+    char str[POS_LEN];
+
+    //construct full pathname
     char filename[MAXPATHLEN];
     sprintf(filename, "%s/pos.txt", fullpath);
-
     fp = fopen(filename, "r");
     if (fp == NULL){
-        return;
+        motor_calibrate();
     }
-    fgets(str, 7, fp);
+    fgets(str, POS_LEN, fp);
     fclose(fp);
 
     char* rest = str;
-    //split params
+    ///split params for h and v
     h = atoi(strtok_r(rest, ",", &rest));
     v = atoi(strtok_r(rest, ",", &rest));
-    printf("h %d, v %d", h, v);
 }
 
+//Store pos to present
 void store_present(int present, int h, int v) {
     FILE *fp;
     char filename[MAXPATHLEN];
+
+    //construct full pathname
     sprintf(filename, "%s/present%d.txt", fullpath, present);
     fp = fopen(filename, "w");
     fprintf(fp, "%d,%d", h, v);
     fclose(fp);
 }
 
+//Load Present from file
 void load_present(int present) {
     FILE *fp;
-    char str[7];
+    char str[POS_LEN]; //Format: xxx,yyy
+
+    //if present no out of bounds, return current pos == do nothing
     if (present < 0 || present > 8) {
-        present_h = 0;
-        present_v = 0;
+        present_h = h;
+        present_v = v;
         return;
     }
+
+    //construct full pathname
     char filename[MAXPATHLEN];
     sprintf(filename, "%s/present%d.txt", fullpath, present);
-
-
     fp = fopen(filename, "r");
     if (fp == NULL){
         return;
     }
-    fgets(str, 7, fp);
+    fgets(str, POS_LEN, fp);
     fclose(fp);
+
     char* rest = str;
-    //split params
+    //split params for h and v
     present_h = atoi(strtok_r(rest, ",", &rest));
     present_v = atoi(strtok_r(rest, ",", &rest));
-    printf("h %d, v %d", present_h, present_v);
 }
 
+// Move motor and update pos
 void motor_move(int motor, int direction, int steps) {
     motor_init();
     switch (motor) {
-        case 0:
+        case PAN:
             motor_h_dir_set(direction);
             motor_h_dist_set(steps);
             motor_h_move();
@@ -99,8 +112,8 @@ void motor_move(int motor, int direction, int steps) {
             } else if (direction == REVERSE) {
                 h = h - steps;
             }
-            break;
-        case 1:
+        break;
+        case TILT:
             motor_v_dir_set(direction);
             motor_v_dist_set(steps);
             motor_v_move();
@@ -110,11 +123,14 @@ void motor_move(int motor, int direction, int steps) {
             } else if (direction == REVERSE) {
                 v = v - steps;
             }
-            break;
+        break;
+        default:
+            //nothing to do
     }
     motor_exit();
 }
 
+//Move motor left and obey limits
 void motor_left(int steps) {
     if (h + steps > MAX_H) {
         steps = MAX_H-h;
@@ -123,6 +139,7 @@ void motor_left(int steps) {
     store_pos(h, v);
 }
 
+//Move motor right and obey limits
 void motor_right(int steps) {
     if (h-steps < 0) {
         steps = h;
@@ -131,6 +148,7 @@ void motor_right(int steps) {
     store_pos(h, v);
 }
 
+//Move motor up and obey limits
 void motor_up(int steps) {
     if (v + steps > MAX_V) {
         steps = MAX_V-v;
@@ -139,6 +157,7 @@ void motor_up(int steps) {
     store_pos(h, v);
 }
 
+//Move motor down and obey limits
 void motor_down(int steps) {
     if (v-steps < 0) {
         steps = v;
@@ -147,13 +166,16 @@ void motor_down(int steps) {
     store_pos(h, v);
 }
 
+//Move motor to specified pos and obey limits
 void motor_goto(int present_h, int present_v) {
+    //Calculate req. steps from current pos in horizontal axis and move accordingly
     if (present_h > h) {
         motor_left(present_h-h);
     } else if ( present_h < h) {
         motor_right(h-present_h);
     }
 
+    //Calculate req. steps from current pos in vertical axis and move accordingly
     if (present_v > v) {
         motor_up(present_v-v);
     } else if ( present_v < v) {
@@ -161,40 +183,51 @@ void motor_goto(int present_h, int present_v) {
     }
 }
 
+//Calibrate motor
 void motor_calibrate() {
+    //Set internal position to MAX without moving to make sure the functions allow a max # of steps
     h = MAX_H;
     v = MAX_V;
 
+    //calibrate horizontal axis first, right is 0. Move to center afterwards
     motor_right(MAX_H);
     h = 0;
     motor_left(CENTER_H);
 
+    //calibrate vertical axis, down is 0. Move to center afterwards
     motor_down(MAX_V);
     v = 0;
     motor_up(CENTER_V);
 }
 
 
+//Run me!
 int main(int argc, char **argv) {
 
-    if (argc < 3 ) {
-        char filename[10];
-        strcpy(filename, argv[0]);
-        printf("Usage: \n%s <calibrate|left|right|up|down|store|goto> <steps|present[1-8]>\n", filename);
-        exit(1);
+    //Min Args is 2 for calibrate
+    if (argc >= 2 ) {
+        //Parse command
+        char command[10];
+        strcpy(command, argv[1]);
+
+        //if command != calibrate, we need at least 3 args. Print help otherwise
+        if (argc < 3 && strcmp(command,"calibrate") != 0) {
+            char filename[10];
+            strcpy(filename, argv[0]);
+            printf("Usage: \n%s <calibrate> | <left|right|up|down> <steps> | <store|goto> <present[1-8]>\n", filename);
+            exit(1);
+        }
     }
 
-    char command[10];
-    strcpy(command, argv[1]);
+    //Parse stepcount/present
     int steps_present = atoi(argv[2]);
 
+    //get path of executable in order to keep the pos files within the same dir
     int length;
     char *p;
     length = readlink("/proc/self/exe", fullpath, sizeof(fullpath));
 
-    /*
-     * Catch some errors:
-     */
+    //Catch some errors
     if (length < 0) {
         perror("resolving symlink /proc/self/exe.");
         exit(1);
@@ -203,12 +236,16 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Path too long.\n");
         exit(1);
     }
+
+    //remove executable name from path
     if((p = strrchr(fullpath, '/')))
         *(p+1) = '\0';
     printf("Full path is: %s\n", fullpath);
 
+    //Load current pos from file or calibrate
     load_pos();
 
+    //Actions
     if (strcmp(command,"calibrate") == 0) {
         motor_calibrate();
     }

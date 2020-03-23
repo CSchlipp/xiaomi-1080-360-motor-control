@@ -37,27 +37,6 @@ void store_pos(int h, int v) {
     fclose(fp);
 }
 
-//Load current pos from file
-void load_pos() {
-    FILE *fp;
-    char str[POS_LEN];
-
-    //construct full pathname
-    char filename[MAXPATHLEN];
-    sprintf(filename, "%s/pos.txt", fullpath);
-    fp = fopen(filename, "r");
-    if (fp == NULL){
-        motor_calibrate();
-    }
-    fgets(str, POS_LEN, fp);
-    fclose(fp);
-
-    char* rest = str;
-    ///split params for h and v
-    h = atoi(strtok_r(rest, ",", &rest));
-    v = atoi(strtok_r(rest, ",", &rest));
-}
-
 //Store pos to present
 void store_present(int present, int h, int v) {
     FILE *fp;
@@ -126,6 +105,7 @@ void motor_move(int motor, int direction, int steps) {
         break;
         default:
             //nothing to do
+        break;
     }
     motor_exit();
 }
@@ -200,27 +180,58 @@ void motor_calibrate() {
     motor_up(CENTER_V);
 }
 
+//Load current pos from file
+void load_pos() {
+    FILE *fp;
+    char str[POS_LEN];
+
+    //construct full pathname
+    char filename[MAXPATHLEN];
+    sprintf(filename, "%s/pos.txt", fullpath);
+    fp = fopen(filename, "r");
+    if (fp == NULL){
+        printf("No position found, calibrating...");
+        motor_calibrate();
+        load_pos();
+        return;
+    }
+    fgets(str, POS_LEN, fp);
+    fclose(fp);
+
+    char* rest = str;
+    ///split params for h and v
+    h = atoi(strtok_r(rest, ",", &rest));
+    v = atoi(strtok_r(rest, ",", &rest));
+}
 
 //Run me!
 int main(int argc, char **argv) {
+    char command[10];
+    int steps_present = 0;
 
     //Min Args is 2 for calibrate
     if (argc >= 2 ) {
         //Parse command
-        char command[10];
         strcpy(command, argv[1]);
 
         //if command != calibrate, we need at least 3 args. Print help otherwise
-        if (argc < 3 && strcmp(command,"calibrate") != 0) {
-            char filename[10];
-            strcpy(filename, argv[0]);
-            printf("Usage: \n%s <calibrate> | <left|right|up|down> <steps> | <store|goto> <present[1-8]>\n", filename);
-            exit(1);
+        if (strcmp(command,"calibrate") != 0) {
+            if (argc < 3) {
+                char filename[10];
+                strcpy(filename, argv[0]);
+                printf("Usage: \n%s <calibrate> | <left|right|up|down> <steps> | <store|goto> <present[1-8]>\n", filename);
+                exit(1);
+            } else {
+                //Parse stepcount/present
+                steps_present = atoi(argv[2]);
+            }
         }
+    } else {
+        char filename[10];
+        strcpy(filename, argv[0]);
+        printf("Usage: \n%s <calibrate> | <left|right|up|down> <steps> | <store|goto> <present[1-8]>\n", filename);
+        exit(1);
     }
-
-    //Parse stepcount/present
-    int steps_present = atoi(argv[2]);
 
     //get path of executable in order to keep the pos files within the same dir
     int length;
@@ -242,31 +253,32 @@ int main(int argc, char **argv) {
         *(p+1) = '\0';
     printf("Full path is: %s\n", fullpath);
 
-    //Load current pos from file or calibrate
-    load_pos();
-
     //Actions
     if (strcmp(command,"calibrate") == 0) {
         motor_calibrate();
-    }
-    else if (strcmp(command,"left") == 0) {
-        motor_left(steps_present);
-    }
-    else if (strcmp(command,"right") == 0) {
-        motor_right(steps_present);
-    }
-    else if (strcmp(command,"up") == 0) {
-        motor_up(steps_present);
-    }
-    else if (strcmp(command,"down") == 0) {
-        motor_down(steps_present);
-    }
-    else if (strcmp(command,"store") == 0 && steps_present > 0 && steps_present <=8) {
-        store_present(steps_present, h, v);
-    }
-    else if (strcmp(command,"goto") == 0 && steps_present > 0 && steps_present <=8) {
-        load_present(steps_present);
-        motor_goto(present_h, present_v);
+    } else {
+        //Load current pos from file or calibrate
+        load_pos();
+
+        if (strcmp(command,"left") == 0) {
+            motor_left(steps_present);
+        }
+        else if (strcmp(command,"right") == 0) {
+            motor_right(steps_present);
+        }
+        else if (strcmp(command,"up") == 0) {
+            motor_up(steps_present);
+        }
+        else if (strcmp(command,"down") == 0) {
+            motor_down(steps_present);
+        }
+        else if (strcmp(command,"store") == 0 && steps_present > 0 && steps_present <=8) {
+            store_present(steps_present, h, v);
+        }
+        else if (strcmp(command,"goto") == 0 && steps_present > 0 && steps_present <=8) {
+            load_present(steps_present);
+            motor_goto(present_h, present_v);
+        }
     }
 }
 

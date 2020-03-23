@@ -13,6 +13,10 @@
 #define CENTER_H 86
 #define CENTER_V 20
 
+#define MAXPATHLEN 200
+
+char fullpath[MAXPATHLEN];
+
 int h = 0;
 int v = 0;
 
@@ -21,7 +25,8 @@ int present_v = 0;
 
 void store_pos(int h, int v) {
     FILE *fp;
-    char* filename = "pos.txt";
+    char filename[MAXPATHLEN];
+    sprintf(filename, "%s/pos.txt", fullpath);
     fp = fopen(filename, "w");
     fprintf(fp, "%d,%d", h, v);
     fclose(fp);
@@ -30,7 +35,8 @@ void store_pos(int h, int v) {
 void load_pos() {
     FILE *fp;
     char str[7];
-    char* filename = "pos.txt";
+    char filename[MAXPATHLEN];
+    sprintf(filename, "%s/pos.txt", fullpath);
 
     fp = fopen(filename, "r");
     if (fp == NULL){
@@ -48,8 +54,8 @@ void load_pos() {
 
 void store_present(int present, int h, int v) {
     FILE *fp;
-    char filename[13];
-    sprintf(filename, "present%d.txt", present);
+    char filename[MAXPATHLEN];
+    sprintf(filename, "%s/present%d.txt", fullpath, present);
     fp = fopen(filename, "w");
     fprintf(fp, "%d,%d", h, v);
     fclose(fp);
@@ -63,8 +69,8 @@ void load_present(int present) {
         present_v = 0;
         return;
     }
-    char filename[13];
-    sprintf(filename, "present%d.txt", present);
+    char filename[MAXPATHLEN];
+    sprintf(filename, "%s/present%d.txt", fullpath, present);
 
 
     fp = fopen(filename, "r");
@@ -181,6 +187,25 @@ int main(int argc, char **argv) {
     char command[10];
     strcpy(command, argv[1]);
     int steps_present = atoi(argv[2]);
+
+    int length;
+    char *p;
+    length = readlink("/proc/self/exe", fullpath, sizeof(fullpath));
+
+    /*
+     * Catch some errors:
+     */
+    if (length < 0) {
+        perror("resolving symlink /proc/self/exe.");
+        exit(1);
+    }
+    if (length >= sizeof(fullpath)) {
+        fprintf(stderr, "Path too long.\n");
+        exit(1);
+    }
+    if((p = strrchr(fullpath, '/')))
+        *(p+1) = '\0';
+    printf("Full path is: %s\n", fullpath);
 
     load_pos();
 
